@@ -318,9 +318,9 @@ public class ReferenceCountedOpenSslEngine extends SSLEngine implements Referenc
      * The new {@link OpenSslSession} will be returned that is created (wrapping the {@code SSL_SESSION*}) and attached
      * to this engine.
      */
-    synchronized OpenSslSession sessionCreated(long sslSession) throws SSLException {
+    synchronized OpenSslSession sessionCreated(long sslSession) {
         if (isDestroyed()) {
-            throw new SSLException("Already closed");
+            return null;
         }
 
         OpenSslSession oldSession = this.session;

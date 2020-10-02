@@ -16,9 +16,9 @@
 package io.netty.handler.ssl;
 
 import io.netty.internal.tcnative.SSLSessionCache;
+import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.internal.SystemPropertyUtil;
 
-import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -51,17 +51,17 @@ class OpenSslSessionCache implements SSLSessionCache {
                 private static final long serialVersionUID = -7773696788135734448L;
 
                 @Override
-        protected boolean removeEldestEntry(Map.Entry<OpenSslSessionId, OpenSslSession> eldest) {
-            int maxSize = maximumCacheSize.get();
-            if (maxSize >= 0 && this.size() > maxSize) {
-                OpenSslSession session = eldest.getValue();
-                sessionRemoved(session);
-                session.release();
-                return true;
-            }
-            return false;
-        }
-    };
+                protected boolean removeEldestEntry(Map.Entry<OpenSslSessionId, OpenSslSession> eldest) {
+                    int maxSize = maximumCacheSize.get();
+                    if (maxSize >= 0 && this.size() > maxSize) {
+                        OpenSslSession session = eldest.getValue();
+                        sessionRemoved(session);
+                        session.release();
+                        return true;
+                    }
+                    return false;
+                }
+            };
 
     private final AtomicInteger maximumCacheSize = new AtomicInteger(DEFAULT_CACHE_SIZE);
 
@@ -118,7 +118,7 @@ class OpenSslSessionCache implements SSLSessionCache {
         if (sslSession != -1) {
             synchronized (this) {
                 if (!io.netty.internal.tcnative.SSLSession.upRef(sslSession)) {
-                    throw new IllegalStateException("Unable to update reference count of SSL_SESSION*");
+                    throw new IllegalReferenceCountException("Unable to update reference count of SSL_SESSION*");
                 }
             }
         }
@@ -147,21 +147,15 @@ class OpenSslSessionCache implements SSLSessionCache {
         }
 
         synchronized (this) {
-            // Mimic what OpenSSL is duing and expunge every 255 new sessions
+            // Mimic what OpenSSL is doing and expunge every 255 new sessions
             // See https://www.openssl.org/docs/man1.0.2/man3/SSL_CTX_flush_sessions.html
             if (++sessionCounter == 255) {
                 sessionCounter = 0;
                 expungeInvalidSessions();
             }
 
-            final OpenSslSession session;
-            try {
-                session = engine.sessionCreated(sslSession);
-            } catch (SSLException e) {
-                // TODO: Should we log this ?
-                return false;
-            }
-            if (!sessionCreated(session)) {
+            final OpenSslSession session = engine.sessionCreated(sslSession);
+            if (session == null || !sessionCreated(session)) {
                 return false;
             }
 
