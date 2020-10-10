@@ -455,9 +455,17 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return executor;
     }
 
+    /**
+     * 从代码逻辑上来说，checkDeadLock()一般只在await方法内部调用，即调用顺序为：
+     * await(long timeout, TimeUnit unit) --> checkDeadLock()
+     * 线程执行await方法等待当前Future异步计算完成，在await方法内部会先调用checkDeadLock检查是不是有死锁的可能，如果有抛异常。
+     * 判断死锁的逻辑是：判断当前执行线程是不是处于EventLoop事件循环中，如果是处于事件循环中，由于出于各种考虑，在循环里是不应该调用阻塞的，
+     * 但还是出现调用了await阻塞，出于经验考虑，很可能会出现死锁。因为死锁这种情况宁可错杀，不可错放，所以直接抛异常退出。
+     */
     protected void checkDeadLock() {
         EventExecutor e = executor();
         if (e != null && e.inEventLoop()) {
+            //可以看下这个类的注释，有对死锁的考虑说明
             throw new BlockingOperationException(toString());
         }
     }

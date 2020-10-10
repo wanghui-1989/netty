@@ -25,7 +25,10 @@ import java.util.concurrent.TimeUnit;
  * The {@link EventExecutorGroup} is responsible for providing the {@link EventExecutor}'s to use
  * via its {@link #next()} method. Besides this, it is also responsible for handling their
  * life-cycle and allows shutting them down in a global fashion.
- *
+ * Netty是主从Reactor多线程模型，这个就是多Reactor的路由器和管理器
+ * EventExecutor的路由器，即EventLoop的路由器，包含多个EventLoop，通过提供的next()方法获取选择的EventLoop
+ * 提供包含的多个EventLoop管理功能，包括关闭等
+ * 继承ScheduledExecutorService，具有线程池的功能
  */
 public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<EventExecutor> {
 

@@ -16,6 +16,8 @@
 package io.netty.util.concurrent;
 
 /**
+ * 当用户处于事件循环线程中时，当用户执行阻止操作时引发的IllegalStateException。
+ * 如果在事件循环线程中执行了阻塞操作，则该阻止操作很可能会进入死锁状态，从而引发此异常。
  * An {@link IllegalStateException} which is raised when a user performed a blocking operation
  * when the user is in an event loop thread.  If a blocking operation is performed in an event loop
  * thread, the blocking operation will most likely enter a dead lock state, hence throwing this

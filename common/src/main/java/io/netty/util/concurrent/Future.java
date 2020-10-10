@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The result of an asynchronous operation.
+ * Ancestor：祖先、祖辈
  */
 @SuppressWarnings("ClassNameSameAsAncestorName")
 public interface Future<V> extends java.util.concurrent.Future<V> {
@@ -47,6 +48,8 @@ public interface Future<V> extends java.util.concurrent.Future<V> {
     Throwable cause();
 
     /**
+     * 将指定的侦听器添加到此future。 此future完成时，将通知指定的监听器。
+     * 如果此future已经完成，则立即通知指定的监听器。
      * Adds the specified listener to this future.  The
      * specified listener is notified when this future is
      * {@linkplain #isDone() done}.  If this future is already
@@ -81,6 +84,7 @@ public interface Future<V> extends java.util.concurrent.Future<V> {
     Future<V> removeListeners(GenericFutureListener<? extends Future<? super V>>... listeners);
 
     /**
+     * 异步转同步，等待当前future完成
      * Waits for this future until it is done, and rethrows the cause of the failure if this future
      * failed.
      */

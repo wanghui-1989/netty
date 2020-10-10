@@ -16,6 +16,7 @@
 package io.netty.util.concurrent;
 
 /**
+ * 用来指示操作进度的可写的Future。
  * Special {@link ProgressiveFuture} which is writable.
  */
 public interface ProgressivePromise<V> extends Promise<V>, ProgressiveFuture<V> {
