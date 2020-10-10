@@ -108,6 +108,7 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
     }
 
     public static int nextVariableIndex() {
+        //静态变量，永远单向递增
         int index = nextIndex.getAndIncrement();
         if (index < 0) {
             nextIndex.decrementAndGet();
@@ -295,6 +296,12 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
      * @return {@code true} if and only if a new thread-local variable has been created
      */
     public boolean setIndexedVariable(int index, Object value) {
+        //从这里可以看到 这种使用方式是有问题的，会有严重浪费空间的情况
+        //因为index是静态变量且永远单向递增，假如在创建了一些FastThreadLocal以后，index已经达到比较大的数，如10238。
+        //此时我们创建一个新的FastThreadLocal变量，给一些新的线程使用，也只有这些线程使用，
+        //那么这些线程里面Object[] indexedVariables大小至少是10240，而且只有这一个变量占用了下标10239的位置，其他位置都是空的，
+        //会浪费空间，没有ThreadLocal好。而且InternalThreadLocalMap是强引用类型，从GC角度来说，也没有ThreadLocalMap弱引用好。
+        //如果要用FastThreadLocalThread和FastThreadLocal一定要考虑是否适用你的业务。
         Object[] lookup = indexedVariables;
         if (index < lookup.length) {
             Object oldValue = lookup[index];

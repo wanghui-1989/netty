@@ -19,6 +19,9 @@ import io.netty.util.internal.InternalThreadLocalMap;
 import io.netty.util.internal.UnstableApi;
 
 /**
+ * 继承Thread，增加InternalThreadLocalMap，为FastThreadLocal类型变量提供快速的访问。相较于ThreadLocal。
+ * 但是会有空间浪费的问题，具体见该方法的注释：io.netty.util.internal.InternalThreadLocalMap#setIndexedVariable(int, java.lang.Object)
+ * 这个类型对父子线程，线程池来说也不能使用。
  * A special {@link Thread} that provides fast access to {@link FastThreadLocal} variables.
  */
 public class FastThreadLocalThread extends Thread {

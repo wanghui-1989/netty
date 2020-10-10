@@ -35,7 +35,12 @@ class UnpaddedInternalThreadLocalMap {
     static final ThreadLocal<InternalThreadLocalMap> slowThreadLocalMap = new ThreadLocal<InternalThreadLocalMap>();
     static final AtomicInteger nextIndex = new AtomicInteger();
 
-    /** Used by {@link FastThreadLocal} */
+    /**
+     * Used by {@link FastThreadLocal}
+     * 保存FastThreadLocal变量对应的值，FastThreadLocal类有个属性字段private final int index;
+     * 该值对应FastThreadLocal在数组indexedVariables里面的下标
+     * 所以如果是FastThreadLocal类型，可以根据下标快速的从indexedVariables获取对应的值。
+     */
     Object[] indexedVariables;
 
     // Core thread-locals

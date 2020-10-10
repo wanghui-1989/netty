@@ -32,6 +32,10 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+/**
+ * 父类AbstractFuture，是不允许取消的Future
+ * @param <V>
+ */
 public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultPromise.class);
     private static final InternalLogger rejectedExecutionLogger =
@@ -42,7 +46,10 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     private static final AtomicReferenceFieldUpdater<DefaultPromise, Object> RESULT_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(DefaultPromise.class, Object.class, "result");
     private static final Object SUCCESS = new Object();
+    //uncancellable:无法取消。可以查看juc.Future的cancel方法注释。
+    //无法取消，通常是因为任务已经完成了，或者已经被取消或由于某些其他原因而无法取消
     private static final Object UNCANCELLABLE = new Object();
+    //包装无法取消异常，表示无法取消任务，因为该任务已取消。包装类、方法名、异常堆栈信息
     private static final CauseHolder CANCELLATION_CAUSE_HOLDER = new CauseHolder(ThrowableUtil.unknownStackTrace(
             new CancellationException(), DefaultPromise.class, "cancel(...)"));
     private static final StackTraceElement[] CANCELLATION_STACK = CANCELLATION_CAUSE_HOLDER.cause.getStackTrace();
@@ -379,8 +386,12 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
      */
     @Override
     public boolean cancel(boolean mayInterruptIfRunning) {
+        //如果result字段的值为null，表示计算还没有获得结果，还没有结束，此时替换为CANCELLATION_CAUSE_HOLDER，标识取消成功。
+        //如果替换成功，表示取消成功。否则就是说过的三种不可取消的情况。
         if (RESULT_UPDATER.compareAndSet(this, null, CANCELLATION_CAUSE_HOLDER)) {
+            //取消成功，检查是否有阻塞在当前Future的线程
             if (checkNotifyWaiters()) {
+                //唤醒所有监听器
                 notifyListeners();
             }
             return true;
@@ -488,13 +499,17 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     }
 
     private void notifyListeners() {
+        //当前线程
         EventExecutor executor = executor();
+        //当前线程就是执行线程
         if (executor.inEventLoop()) {
             final InternalThreadLocalMap threadLocals = InternalThreadLocalMap.get();
             final int stackDepth = threadLocals.futureListenerStackDepth();
             if (stackDepth < MAX_LISTENER_STACK_DEPTH) {
+                //TODO 这没看懂？？
                 threadLocals.setFutureListenerStackDepth(stackDepth + 1);
                 try {
+                    //唤醒Future的所有监听器
                     notifyListenersNow();
                 } finally {
                     threadLocals.setFutureListenerStackDepth(stackDepth);
@@ -543,21 +558,32 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
     private void notifyListenersNow() {
         Object listeners;
+        //锁是当前future
         synchronized (this) {
+            //仅在有要唤醒的监听器且我们尚未唤醒监听器器时继续进行。
             // Only proceed if there are listeners to notify and we are not already notifying listeners.
             if (notifyingListeners || this.listeners == null) {
+                //其他线程正在唤醒或者已经调过唤醒 或者 监听器为空
                 return;
             }
+            //防止重复唤醒
             notifyingListeners = true;
+            //获取当时的监听器
             listeners = this.listeners;
+            //清空已经处理的监听器，后面不为null的话，就是新的对象，是别的线程再添加监听时创建的。
             this.listeners = null;
         }
+
+        //多线程时，也只能有一个线程走到这里
         for (;;) {
+            //所以事件监听是单线程同步操作，多个监听器的监听方法调用会相互影响，包括开始时间，异常等。
             if (listeners instanceof DefaultFutureListeners) {
                 notifyListeners0((DefaultFutureListeners) listeners);
             } else {
                 notifyListener0(this, (GenericFutureListener<?>) listeners);
             }
+            //从逻辑看，只能有1个线程走到这里，但是因为要操作共享变量listeners，所以要加锁，
+            //因为此时可能有别的线程又添加了新的监听器，这也是for循环的意义，不停循环获取新的监听器，执行监听。
             synchronized (this) {
                 if (this.listeners == null) {
                     // Nothing can throw from within this method, so setting notifyingListeners back to false does not
@@ -582,6 +608,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     @SuppressWarnings({ "unchecked", "rawtypes" })
     private static void notifyListener0(Future future, GenericFutureListener l) {
         try {
+            //调用事件监听
             l.operationComplete(future);
         } catch (Throwable t) {
             if (logger.isWarnEnabled()) {
@@ -617,6 +644,8 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     }
 
     private boolean setValue0(Object objResult) {
+        //private volatile Object result;值为null的话，置为objResult
+        //值为UNCANCELLABLE对象的话，置为objResult
         if (RESULT_UPDATER.compareAndSet(this, null, objResult) ||
             RESULT_UPDATER.compareAndSet(this, UNCANCELLABLE, objResult)) {
             if (checkNotifyWaiters()) {
@@ -632,7 +661,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
      * @return {@code true} if there are any listeners attached to the promise, {@code false} otherwise.
      */
     private synchronized boolean checkNotifyWaiters() {
+        //阻塞在当前Future的线程计数
         if (waiters > 0) {
+            //唤醒所有阻塞线程
             notifyAll();
         }
         return listeners != null;

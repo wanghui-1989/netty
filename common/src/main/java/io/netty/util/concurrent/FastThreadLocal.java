@@ -23,6 +23,10 @@ import java.util.IdentityHashMap;
 import java.util.Set;
 
 /**
+ * 快速访问ThreadLocal类型。如何做到的快速访问？
+ * 该类型对象会分配一个final的int类型索引变量。使用该索引作为数组下标，去数组里取。
+ * 这个变量和配套线程的组合使用会有空间浪费的问题，具体见该方法的内部注释：
+ * io.netty.util.internal.InternalThreadLocalMap#setIndexedVariable(int, java.lang.Object)
  * A special variant of {@link ThreadLocal} that yields higher access performance when accessed from a
  * {@link FastThreadLocalThread}.
  * <p>

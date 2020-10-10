@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
+ * 不允许取消的Future
  * Abstract {@link Future} implementation which does not allow for cancellation.
  *
  * @param <V>
