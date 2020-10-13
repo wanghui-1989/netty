@@ -21,6 +21,8 @@ import io.netty.util.internal.ObjectUtil;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * 表示已完成的Future
+ * 有两类子类型，一个是正常成功，一个是异常失败
  * A skeletal {@link Future} implementation which represents a {@link Future} which has been completed already.
  */
 public abstract class CompleteFuture<V> extends AbstractFuture<V> {

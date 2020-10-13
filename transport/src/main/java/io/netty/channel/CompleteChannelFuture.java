@@ -22,6 +22,7 @@ import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.internal.ObjectUtil;
 
 /**
+ * 包含Channel类型的已完成Future
  * A skeletal {@link ChannelFuture} implementation which represents a
  * {@link ChannelFuture} which has been completed already.
  */

@@ -45,6 +45,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     @SuppressWarnings("rawtypes")
     private static final AtomicReferenceFieldUpdater<DefaultPromise, Object> RESULT_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(DefaultPromise.class, Object.class, "result");
+    //表示异步计算正常结束，但是返回结果类型为void，统一使用该对象表示这种情况。
     private static final Object SUCCESS = new Object();
     //uncancellable:无法取消，表示该future被设置为不可取消的状态。
     private static final Object UNCANCELLABLE = new Object();
@@ -530,6 +531,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
      */
     protected static void notifyListener(
             EventExecutor eventExecutor, final Future<?> future, final GenericFutureListener<?> listener) {
+
         notifyListenerWithStackOverFlowProtection(
                 checkNotNull(eventExecutor, "eventExecutor"),
                 checkNotNull(future, "future"),

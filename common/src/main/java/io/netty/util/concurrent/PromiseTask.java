@@ -41,10 +41,17 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
         }
     }
 
+    //哨兵任务，无操作，用名称标识状态，子类ScheduledFutureTask定时重复任务时会用到
+    //在一些情况下我们认为任务已经结束了，不需要再执行了，此时在定时任务队列里面可能还有这个任务，
+    //需要将task设置为空操作就可以解决这个问题。
+    //已成功
     private static final Runnable COMPLETED = new SentinelRunnable("COMPLETED");
+    //已取消
     private static final Runnable CANCELLED = new SentinelRunnable("CANCELLED");
+    //失败
     private static final Runnable FAILED = new SentinelRunnable("FAILED");
 
+    //Sentinel:哨兵
     private static class SentinelRunnable implements Runnable {
         private final String name;
 
@@ -92,6 +99,9 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
     @SuppressWarnings("unchecked")
     final V runTask() throws Exception {
         final Object task = this.task;
+        //子类ScheduledFutureTask的定时重复执行逻辑中，也是调用的这个方法
+        //这里不会判断是不是COMPLETED，CANCELLED，FAILED。直接执行。
+        //如果某时需要取消任务等情况，定时任务队列里面可能还有这个任务，此时将task设置为空操作就可以解决这个问题。
         if (task instanceof Callable) {
             return ((Callable<V>) task).call();
         }
@@ -102,17 +112,26 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
     @Override
     public void run() {
         try {
+            //执行前尝试设为不可取消
             if (setUncancellableInternal()) {
                 V result = runTask();
+                //set成功结果
+                //考虑到定时重复任务，需要替换任务对象task为NO-OP任务，COMPLETED
                 setSuccessInternal(result);
             }
         } catch (Throwable e) {
+            //set失败结果
+            //考虑到定时重复任务，需要替换任务对象task为NO-OP任务，FAILED
             setFailureInternal(e);
         }
     }
 
+    //只有在判定当前promiseTask已完成的时候，比如success，failed，cancel=true时，
+    // 替换掉task的执行逻辑，避免被执行多次，替换后就是NO-OP，相当于空跑。
     private boolean clearTaskAfterCompletion(boolean done, Runnable result) {
         if (done) {
+            //只有在定期ScheduledFutureTask的情况下才可能调用哨兵任务，
+            // 在这种情况下，这是一个良性竞争，并且取消并且不使用（空）返回值。
             // The only time where it might be possible for the sentinel task
             // to be called is in the case of a periodic ScheduledFutureTask,
             // in which case it's a benign race with cancellation and the (null)
@@ -124,11 +143,14 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
 
     @Override
     public final Promise<V> setFailure(Throwable cause) {
+        //final覆盖，抛异常，表示不允许调用这个方法了
         throw new IllegalStateException();
     }
 
     protected final Promise<V> setFailureInternal(Throwable cause) {
         super.setFailure(cause);
+        //调用这个方法本身就表示已经结束了，不需要再执行了，此时在定时任务队列里面可能还有这个任务，
+        // 需要将task设置为空操作就可以解决这个问题。
         clearTaskAfterCompletion(true, FAILED);
         return this;
     }
@@ -149,6 +171,8 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
 
     protected final Promise<V> setSuccessInternal(V result) {
         super.setSuccess(result);
+        //调用这个方法本身就表示已经结束了，不需要再执行了，此时在定时任务队列里面可能还有这个任务，
+        // 需要将task设置为空操作就可以解决这个问题。
         clearTaskAfterCompletion(true, COMPLETED);
         return this;
     }
@@ -164,6 +188,7 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
 
     @Override
     public final boolean setUncancellable() {
+        //final覆盖，抛异常，表示不允许调用这个方法了
         throw new IllegalStateException();
     }
 
@@ -173,6 +198,8 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
 
     @Override
     public boolean cancel(boolean mayInterruptIfRunning) {
+        //调用父类取消方法
+        //如果某时需要取消任务，在定时任务队列里面可能还有这个任务，此时将task设置为空操作就可以解决这个问题。
         return clearTaskAfterCompletion(super.cancel(mayInterruptIfRunning), CANCELLED);
     }
 

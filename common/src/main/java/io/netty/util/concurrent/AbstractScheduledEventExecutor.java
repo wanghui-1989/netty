@@ -43,8 +43,10 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
        public void run() { } // Do nothing
     };
 
+    //周期任务队列，优先级队列，非线程安全队列
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
+    //入队时，生成taskId
     long nextTaskId;
 
     protected AbstractScheduledEventExecutor() {
@@ -78,6 +80,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue() {
         if (scheduledTaskQueue == null) {
+            //默认优先级队列，非线程安全的
             scheduledTaskQueue = new DefaultPriorityQueue<ScheduledFutureTask<?>>(
                     SCHEDULED_FUTURE_TASK_COMPARATOR,
                     // Use same initial capacity as java.util.PriorityQueue
@@ -97,6 +100,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
      */
     protected void cancelScheduledTasks() {
         assert inEventLoop();
+        //当前线程是构造任务时传入的线程，保证只能有一个线程执行任务，因为非线程安全的
         PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
         if (isNullOrEmpty(scheduledTaskQueue)) {
             return;
@@ -126,11 +130,15 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     protected final Runnable pollScheduledTask(long nanoTime) {
         assert inEventLoop();
 
+        //peek队列头任务，不删除
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
         if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
+            //没到时间
             return null;
         }
+        //获取并删除队列头任务
         scheduledTaskQueue.remove();
+        //如果是一次性任务，就更改deadlineNanos = 0L，这样后续判断中会立即执行这个任务
         scheduledTask.setConsumed();
         return scheduledTask;
     }
@@ -158,10 +166,13 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     /**
+     * 如果有已经准备好要执行的定时任务的话，返回true。
      * Returns {@code true} if a scheduled task is ready for processing.
      */
     protected final boolean hasScheduledTasks() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
+        //因为是优先级队列，队头任务是离现在最近的，只判断队头任务就可以了
+        //如果这个任务截止时间已经过了或者等于当前时间，应该立即执行
         return scheduledTask != null && scheduledTask.deadlineNanos() <= nanoTime();
     }
 
@@ -248,13 +259,16 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     final void scheduleFromEventLoop(final ScheduledFutureTask<?> task) {
         // nextTaskId a long and so there is no chance it will overflow back to 0
+        //这里一定要保证是单线程的执行器，nextTaskId计算没有锁
         scheduledTaskQueue().add(task.setId(++nextTaskId));
     }
 
     private <V> ScheduledFuture<V> schedule(final ScheduledFutureTask<V> task) {
         if (inEventLoop()) {
+            //当前线程是构造任务时传入的线程，保证只能有一个线程执行任务，因为非线程安全的
             scheduleFromEventLoop(task);
         } else {
+            //其他线程
             final long deadlineNanos = task.deadlineNanos();
             // task will add itself to scheduled task queue when run if not expired
             if (beforeScheduledTaskSubmitted(deadlineNanos)) {

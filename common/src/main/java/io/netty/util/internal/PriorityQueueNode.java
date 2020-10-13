@@ -34,6 +34,7 @@ public interface PriorityQueueNode {
     int priorityQueueIndex(DefaultPriorityQueue<?> queue);
 
     /**
+     * 由DefaultPriorityQueue用来维护队列中元素的状态。
      * Used by {@link DefaultPriorityQueue} to maintain state for an element in the queue.
      * <p>
      * Throwing exceptions from this method will result in undefined behavior.

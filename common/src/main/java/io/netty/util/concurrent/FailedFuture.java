@@ -19,6 +19,7 @@ import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.PlatformDependent;
 
 /**
+ * 已完成-异常失败Future
  * The {@link CompleteFuture} which is failed already.  It is
  * recommended to use {@link EventExecutor#newFailedFuture(Throwable)}
  * instead of calling the constructor of this future.

@@ -32,6 +32,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
+ * 单线程单例EventExecutor。
+ * 它会自动启动线程，并且如果1秒钟内任务队列中一直没有待处理的任务，它将自动停止线程。
  * Single-thread singleton {@link EventExecutor}.  It starts the thread automatically and stops it when there is no
  * task pending in the task queue for 1 second.  Please note it is not scalable to schedule large number of tasks to
  * this executor; use a dedicated executor.
@@ -40,13 +42,15 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(GlobalEventExecutor.class);
 
+    //1秒
     private static final long SCHEDULE_QUIET_PERIOD_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     public static final GlobalEventExecutor INSTANCE = new GlobalEventExecutor();
 
+    //线程安全的阻塞队列
     final BlockingQueue<Runnable> taskQueue = new LinkedBlockingQueue<Runnable>();
-    final ScheduledFutureTask<Void> quietPeriodTask = new ScheduledFutureTask<Void>(
-            this, Executors.<Void>callable(new Runnable() {
+    //对象创建1秒钟后开始执行，固定延期1秒钟重复执行。无操作。属于固定延迟周期重复任务。
+    final ScheduledFutureTask<Void> quietPeriodTask = new ScheduledFutureTask<Void>(this, Executors.<Void>callable(new Runnable() {
         @Override
         public void run() {
             // NOOP
@@ -57,6 +61,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     // can trigger the creation of a thread from arbitrary thread groups; for this reason, the thread factory must not
     // be sticky about its thread group
     // visible for testing
+    //这个工厂生产的线程类型为FastThreadLocalThread，使用FastThreadLocal保存每个线程对应的executor。
     final ThreadFactory threadFactory;
     private final TaskRunner taskRunner = new TaskRunner();
     private final AtomicBoolean started = new AtomicBoolean();
@@ -65,19 +70,22 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     private final Future<?> terminationFuture = new FailedFuture<Object>(this, new UnsupportedOperationException());
 
     private GlobalEventExecutor() {
+        //直接入周期队列，因为scheduledTaskQueue非线程安全，但是整个生命周期内只有这一个任务，即quietPeriodTask，
+        //保持不变，所以可以被多线程共享使用
         scheduledTaskQueue().add(quietPeriodTask);
-        threadFactory = ThreadExecutorMap.apply(new DefaultThreadFactory(
-                DefaultThreadFactory.toPoolName(getClass()), false, Thread.NORM_PRIORITY, null), this);
+        threadFactory = ThreadExecutorMap.apply(new DefaultThreadFactory(DefaultThreadFactory.toPoolName(getClass()), false, Thread.NORM_PRIORITY, null), this);
     }
 
     /**
+     * 从任务队列中获取下一个Runnable，如果当前不存在任何任务，它将阻塞。
+     * 如果执行程序线程已被中断或唤醒，返回null。
      * Take the next {@link Runnable} from the task queue and so will block if no task is currently present.
-     *
      * @return {@code null} if the executor thread has been interrupted or waken up.
      */
     Runnable takeTask() {
         BlockingQueue<Runnable> taskQueue = this.taskQueue;
-        for (;;) {
+        for (; ; ) {
+            //正常情况下一定有值，是构造时加入的无操作quietPeriodTask，保持不变。
             ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
             if (scheduledTask == null) {
                 Runnable task = null;
@@ -187,7 +195,6 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
      * Because a new worker thread will be started again when a new task is submitted, this operation is only useful
      * when you want to ensure that the worker thread is terminated <strong>after</strong> your application is shut
      * down and there's no chance of submitting a new task afterwards.
-     *
      * @return {@code true} if and only if the worker thread has been terminated
      */
     public boolean awaitInactivity(long timeout, TimeUnit unit) throws InterruptedException {
@@ -236,7 +243,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     final class TaskRunner implements Runnable {
         @Override
         public void run() {
-            for (;;) {
+            for (; ; ) {
                 Runnable task = takeTask();
                 if (task != null) {
                     try {

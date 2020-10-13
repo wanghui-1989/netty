@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadFactory;
  */
 public final class ThreadExecutorMap {
 
+    //线程本地变量，不支持子线程继承父线程变量 和 线程池
     private static final FastThreadLocal<EventExecutor> mappings = new FastThreadLocal<EventExecutor>();
 
     private ThreadExecutorMap() { }
@@ -69,6 +70,7 @@ public final class ThreadExecutorMap {
         return new Runnable() {
             @Override
             public void run() {
+                //保存线程对应的executor
                 setCurrentEventExecutor(eventExecutor);
                 try {
                     command.run();
