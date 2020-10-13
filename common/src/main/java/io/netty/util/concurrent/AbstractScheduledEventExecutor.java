@@ -133,7 +133,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         //peek队列头任务，不删除
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
         if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
-            //没到时间
+            //没有 或者 没到时间
             return null;
         }
         //获取并删除队列头任务
