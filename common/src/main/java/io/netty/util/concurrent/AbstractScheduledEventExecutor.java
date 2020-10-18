@@ -80,7 +80,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue() {
         if (scheduledTaskQueue == null) {
-            //默认优先级队列，非线程安全的
+            //默认优先级队列，非线程安全的，非延迟队列
             scheduledTaskQueue = new DefaultPriorityQueue<ScheduledFutureTask<?>>(
                     SCHEDULED_FUTURE_TASK_COMPARATOR,
                     // Use same initial capacity as java.util.PriorityQueue
@@ -133,7 +133,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         //peek队列头任务，不删除
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
         if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
-            //没有 或者 没到时间
+            //null 或者 没到时间
             return null;
         }
         //获取并删除队列头任务

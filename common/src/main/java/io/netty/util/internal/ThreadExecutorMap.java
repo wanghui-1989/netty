@@ -91,6 +91,7 @@ public final class ThreadExecutorMap {
         return new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
+                //创建线程，包装任务，任务内部在执行时会 将线程 和 对应eventExecutor 保存在FastThreadLocal中
                 return threadFactory.newThread(apply(r, eventExecutor));
             }
         };
