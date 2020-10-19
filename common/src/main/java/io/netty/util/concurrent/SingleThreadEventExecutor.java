@@ -92,13 +92,16 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private long lastExecutionTime;
 
+    //默认的线程状态：未启动
     @SuppressWarnings({ "FieldMayBeFinal", "unused" })
     private volatile int state = ST_NOT_STARTED;
 
+    //优雅关闭静默期，此期间还可以添加任务
     private volatile long gracefulShutdownQuietPeriod;
     private volatile long gracefulShutdownTimeout;
     private long gracefulShutdownStartTime;
 
+    //获取终止操作状态时使用
     private final Promise<?> terminationFuture = new DefaultPromise<Void>(GlobalEventExecutor.INSTANCE);
 
     /**
@@ -222,6 +225,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     /**
+     * 整体逻辑和io.netty.util.concurrent.GlobalEventExecutor#takeTask()基本一样，
+     * 多了一个操作，就是从scheduledTaskQueue取出周期任务放入taskQueue时，
+     * 如果因为taskQueue满了失败，就再放回到scheduledTaskQueue中
      * Take the next {@link Runnable} from the task queue and so will block if no task is currently present.
      * <p>
      * Be aware that this method will throw an {@link UnsupportedOperationException} if the task queue, which was
@@ -288,6 +294,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 return true;
             }
             if (!taskQueue.offer(scheduledTask)) {
+                //taskQueue满了，放入失败，再放回scheduledTaskQueue中
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
@@ -554,6 +561,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (!inEventLoop) {
             // Use offer as we actually only need this to unblock the thread and if offer fails we do not care as there
             // is already something in the queue.
+            //使用offer，因为我们实际上只需要这样做来解除线程阻塞，并且如果offer失败，我们不在乎，因为队列中已经有东西。
             taskQueue.offer(WAKEUP_TASK);
         }
     }
@@ -756,6 +764,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             throw new IllegalStateException("must be invoked from an event loop");
         }
 
+        //取消但不删除
         cancelScheduledTasks();
 
         if (gracefulShutdownStartTime == 0) {
@@ -829,11 +838,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean inEventLoop = inEventLoop();
         addTask(task);
         if (!inEventLoop) {
+            //thread为null，或者thread不等于当前线程
             startThread();
             if (isShutdown()) {
+                //如果已经关闭
                 boolean reject = false;
                 try {
                     if (removeTask(task)) {
+                        //删除添加的任务，置为拒绝状态
                         reject = true;
                     }
                 } catch (UnsupportedOperationException e) {
@@ -842,11 +854,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                     // In worst case we will log on termination.
                 }
                 if (reject) {
+                    //抛拒绝异常
                     reject();
                 }
             }
         }
 
+        //TODO 应该是bug
         if (!addTaskWakesUp && immediate) {
             wakeup(inEventLoop);
         }
@@ -943,9 +957,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void startThread() {
         if (state == ST_NOT_STARTED) {
+            //thread未启动状态
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
+                //置为启动，相当于获取了保证单线程的锁
                 boolean success = false;
                 try {
+                    //启动线程
                     doStartThread();
                     success = true;
                 } finally {
@@ -977,9 +994,18 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        //从构造器看，executor=new ThreadPerTaskExecutor(threadFactory);
+        //ThreadPerTaskExecutor源码：
+        //    @Override
+        //    public void execute(Runnable command) {
+        //        threadFactory.newThread(command).start();
+        //    }
+        //执行executor.execute就是创建并启动了一个线程，执行SingleThreadEventExecutor.this.run();的逻辑
+        //因为前面的CAS锁，保证了单线程。
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                //为线程赋值为当前线程
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -988,13 +1014,16 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    //因为执行完就关闭，所以SingleThreadEventExecutor.this.run();内部应该是无限循环从队列取任务执行
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);
                 } finally {
+                    //执行完就关闭
                     for (;;) {
                         int oldState = state;
+                        //置为关闭中，此时可以仍然可以接受任务，graceful shutdown with quietPeriod
                         if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet(
                                 SingleThreadEventExecutor.this, oldState, ST_SHUTTING_DOWN)) {
                             break;
@@ -1015,6 +1044,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         // is in ST_SHUTTING_DOWN state still accepting tasks which is needed for
                         // graceful shutdown with quietPeriod.
                         for (;;) {
+                            //执行所有剩余的任务，包括taskQueue、scheduledTaskQueue中的所有任务，以及关闭钩子
                             if (confirmShutdown()) {
                                 break;
                             }
@@ -1024,6 +1054,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         // achieved by switching the state. Any new tasks beyond this point will be rejected.
                         for (;;) {
                             int oldState = state;
+                            //置为已关闭，从这里开始就不能再添加新的任务了，添加任务会被拒绝
                             if (oldState >= ST_SHUTDOWN || STATE_UPDATER.compareAndSet(
                                     SingleThreadEventExecutor.this, oldState, ST_SHUTDOWN)) {
                                 break;
@@ -1044,7 +1075,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                             FastThreadLocal.removeAll();
 
                             STATE_UPDATER.set(SingleThreadEventExecutor.this, ST_TERMINATED);
+                            //awaitTermination方法在等待关闭
                             threadLock.countDown();
+                            //统计taskQueue还剩下多少任务没有执行
                             int numUserTasks = drainTasks();
                             if (numUserTasks > 0 && logger.isWarnEnabled()) {
                                 logger.warn("An event executor terminated with " +
