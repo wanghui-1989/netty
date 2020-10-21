@@ -40,6 +40,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
+ * ChannelPipeline相当于一个Channel的包装类，他将处理的一个Channel包装起来，
+ * 里面还有FilterChain，也就是handler双向链表。channel依次流过FilterChain，就是过滤器链模式。
  * The default {@link ChannelPipeline} implementation.  It is usually created
  * by a {@link Channel} implementation when the {@link Channel} is created.
  */
@@ -61,9 +63,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private static final AtomicReferenceFieldUpdater<DefaultChannelPipeline, MessageSizeEstimator.Handle> ESTIMATOR =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
+    //入站handler链的头部
     final AbstractChannelHandlerContext head;
+    //出站handler链的尾部
     final AbstractChannelHandlerContext tail;
 
+    //包装的channel
     private final Channel channel;
     private final ChannelFuture succeededFuture;
     private final VoidChannelPromise voidPromise;

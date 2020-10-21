@@ -27,6 +27,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * Netty创建这个类，有特殊的用途，和JUC的ScheduledExecutorService作用不一样。
+ * 这个类的主要用法就是传入当前时间，一次性返回所有到期的任务，如果没有的话返回null，不会阻塞延时等待。
+ * 主要用来做一个定时器使用。
  * Abstract base class for {@link EventExecutor}s that want to support scheduling.
  */
 public abstract class AbstractScheduledEventExecutor extends AbstractEventExecutor {

@@ -27,6 +27,10 @@ final class DefaultSelectStrategy implements SelectStrategy {
 
     @Override
     public int calculateStrategy(IntSupplier selectSupplier, boolean hasTasks) throws Exception {
+        //有任务就用selectSupplier动态选择，如果没有任务就用阻塞的select。
+        //因为根据ioRatio的定义，既要执行IO任务，也要执行非IO任务，
+        // 当队列有任务的时候，要留出时间执行非IO任务，所以不会阻塞select
+        //当队列没有任务的时候，可以阻塞select
         return hasTasks ? selectSupplier.get() : SelectStrategy.SELECT;
     }
 }

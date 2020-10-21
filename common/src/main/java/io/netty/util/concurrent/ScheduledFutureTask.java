@@ -158,6 +158,9 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         assert executor().inEventLoop();
         //要保证只有一个线程会执行这个逻辑
         try {
+            //这里加了个保障，netty里对ScheduledFutureTask有专门的用途，
+            // 在正常的情况下是不会出现未到执行时间的，对外第三方编程使用可能会出现这种情况，
+            //如果未到执行时间，就生成taskId，放到队列中，或者说更新taskId，放回到队列中。
             if (delayNanos() > 0L) {
                 //还没到deadlineNanos，也就是还没有到运行时间，都加到队列里去，按优先级处理，
                 // 可以看下比较器中的优先级判断逻辑，有按到期时间比较的。
@@ -166,7 +169,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
                 if (isCancelled()) {
                     scheduledExecutor().scheduledTaskQueue().removeTyped(this);
                 } else {
-                    //生成taskId，加到队列中
+                    //生成taskId，加到队列中，或者说更新taskId，放回到队列中。
                     scheduledExecutor().scheduleFromEventLoop(this);
                 }
                 return;

@@ -205,7 +205,12 @@ import java.util.NoSuchElementException;
  * // a time-consuming task.
  * // If your business logic is fully asynchronous or finished very quickly, you don't
  * // need to specify a group.
+ * 这里很重要，翻译：
+ * 告诉pipeline在与I/O线程不同的线程中运行MyBusinessLogicHandler的事件处理程序方法，
+ * 以使I/O线程不会被耗时的任务阻塞。 如果您的业务逻辑完全异步或很快完成，则无需指定组。
+ *
  * pipeline.addLast(group, "handler", new MyBusinessLogicHandler());
+ *
  * </pre>
  *
  * Be aware that while using {@link DefaultEventLoopGroup} will offload the operation from the {@link EventLoop} it will

@@ -291,6 +291,8 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
          * Return a special ChannelPromise which can be reused and passed to the operations in {@link Unsafe}.
          * It will never be notified of a success or error and so is only a placeholder for operations
          * that take a {@link ChannelPromise} as argument but for which you not want to get notified.
+         * 翻译：返回一个特殊的ChannelPromise，可以重复使用并将其传递给Channel.Unsafe中的操作。
+         * 它永远不会收到成功或错误的通知，因此它只是一个占位符，用于以ChannelPromise作为参数但您不想收到通知的操作。
          */
         ChannelPromise voidPromise();
 

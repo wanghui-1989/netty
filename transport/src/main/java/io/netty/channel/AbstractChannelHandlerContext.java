@@ -61,6 +61,7 @@ import static io.netty.channel.ChannelHandlerMask.mask;
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannelHandlerContext.class);
+    //双向链表
     volatile AbstractChannelHandlerContext next;
     volatile AbstractChannelHandlerContext prev;
 
@@ -84,10 +85,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      * nor {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
      */
     private static final int INIT = 0;
-
+    //handler关联的pipeline
     private final DefaultChannelPipeline pipeline;
     private final String name;
+    //executor是否是串行执行
     private final boolean ordered;
+    //当前handler复写的支持的操作位掩码
     private final int executionMask;
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
@@ -147,8 +150,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     static void invokeChannelRegistered(final AbstractChannelHandlerContext next) {
+        //找到的下一个handler的executor
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            //如果下一个handler的executor和当前handler的executor是同一个，或者说是同一个线程
+            //比如说NioEventLoop单线程处理器，所有handler都是同一个线程处理
+            //单线程的同步调用方式，执行事件调用
             next.invokeChannelRegistered();
         } else {
             executor.execute(new Runnable() {
@@ -163,6 +170,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeChannelRegistered() {
         if (invokeHandler()) {
             try {
+                //执行事件回调
                 ((ChannelInboundHandler) handler()).channelRegistered(this);
             } catch (Throwable t) {
                 invokeExceptionCaught(t);
@@ -876,6 +884,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private AbstractChannelHandlerContext findContextInbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         EventExecutor currentExecutor = executor();
+        //从当前入站handler开始，沿着入站handler链，往下找，找到第一个能处理mask掩码指定操作的handler
+        //比如mask是读事件，就找到下一个可以处理读事件的handler
         do {
             ctx = ctx.next;
         } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_INBOUND));
@@ -885,6 +895,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private AbstractChannelHandlerContext findContextOutbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         EventExecutor currentExecutor = executor();
+        //从当前出站handler开始，沿着出站handler链，往上找，找到第一个能处理mask掩码指定操作的handler
+        //比如mask是bind事件，就找到下一个可以处理bind事件的handler
         do {
             ctx = ctx.prev;
         } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_OUTBOUND));
@@ -894,11 +906,14 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private static boolean skipContext(
             AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
         // Ensure we correctly handle MASK_EXCEPTION_CAUGHT which is not included in the MASK_EXCEPTION_CAUGHT
+        //如果onlyMask是只有入站handler含有的操作，或者只有出站handler含有的操作
+        //这个含义就是当前handler完全没有入站的操作，也没有给定的mask操作，既不是入站handler，也不是给定的mask handler
         return (ctx.executionMask & (onlyMask | mask)) == 0 ||
                 // We can only skip if the EventExecutor is the same as otherwise we need to ensure we offload
                 // everything to preserve ordering.
                 //
                 // See https://github.com/netty/netty/issues/10067
+                //TODO 这块有点不明白？？
                 (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0);
     }
 
@@ -962,6 +977,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private boolean invokeHandler() {
         // Store in local variable to reduce volatile reads.
         int handlerState = this.handlerState;
+        //要确定这个handler已经添加到了ChannelPipeline的handler链中
+        //TODO 这个要确定，没有调用ChannelHandler.handlerAdded方法()？？
         return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
     }
 

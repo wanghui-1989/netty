@@ -32,6 +32,9 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+/**
+ * Channel handler mask
+ */
 final class ChannelHandlerMask {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelHandlerMask.class);
 
@@ -54,12 +57,19 @@ final class ChannelHandlerMask {
     static final int MASK_WRITE = 1 << 15;
     static final int MASK_FLUSH = 1 << 16;
 
+    /** 入站handler独有的方法 */
     static final int MASK_ONLY_INBOUND =  MASK_CHANNEL_REGISTERED |
             MASK_CHANNEL_UNREGISTERED | MASK_CHANNEL_ACTIVE | MASK_CHANNEL_INACTIVE | MASK_CHANNEL_READ |
             MASK_CHANNEL_READ_COMPLETE | MASK_USER_EVENT_TRIGGERED | MASK_CHANNEL_WRITABILITY_CHANGED;
+
+    /** 入站handler有的所有方法 */
     private static final int MASK_ALL_INBOUND = MASK_EXCEPTION_CAUGHT | MASK_ONLY_INBOUND;
+
+    /** 出站handler独有的方法 */
     static final int MASK_ONLY_OUTBOUND =  MASK_BIND | MASK_CONNECT | MASK_DISCONNECT |
             MASK_CLOSE | MASK_DEREGISTER | MASK_READ | MASK_WRITE | MASK_FLUSH;
+
+    /** 出站handler有的所有方法 */
     private static final int MASK_ALL_OUTBOUND = MASK_EXCEPTION_CAUGHT | MASK_ONLY_OUTBOUND;
 
     private static final FastThreadLocal<Map<Class<? extends ChannelHandler>, Integer>> MASKS =
@@ -76,6 +86,7 @@ final class ChannelHandlerMask {
     static int mask(Class<? extends ChannelHandler> clazz) {
         // Try to obtain the mask from the cache first. If this fails calculate it and put it in the cache for fast
         // lookup in the future.
+        //返回入参ChannelHandler支持的操作位掩码
         Map<Class<? extends ChannelHandler>, Integer> cache = MASKS.get();
         Integer mask = cache.get(clazz);
         if (mask == null) {
@@ -92,8 +103,10 @@ final class ChannelHandlerMask {
         int mask = MASK_EXCEPTION_CAUGHT;
         try {
             if (ChannelInboundHandler.class.isAssignableFrom(handlerType)) {
+                //位运算 默认包含所有操作，然后再一个个剔除不支持的操作位
                 mask |= MASK_ALL_INBOUND;
 
+                //没有这个方法，或者有这个方法，但是被@Skip注解注释，就表示需要跳过这个方法。
                 if (isSkippable(handlerType, "channelRegistered", ChannelHandlerContext.class)) {
                     mask &= ~MASK_CHANNEL_REGISTERED;
                 }
@@ -177,8 +190,10 @@ final class ChannelHandlerMask {
                         logger.debug(
                             "Class {} missing method {}, assume we can not skip execution", handlerType, methodName, e);
                     }
+                    //不存在这个方法
                     return false;
                 }
+                //或者方法存在，但是被@Skip注解注释
                 return m != null && m.isAnnotationPresent(Skip.class);
             }
         });

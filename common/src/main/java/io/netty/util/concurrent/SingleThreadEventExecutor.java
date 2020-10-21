@@ -382,12 +382,15 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
+            //从scheduledTaskQueue取出所有的到期任务（以now为基准），放到taskQueue
             fetchedAll = fetchFromScheduledTaskQueue();
+            //执行taskQueue中的所有任务
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
             }
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
 
+        //执行taskQueue中的所有任务，至少成功了一轮
         if (ranAtLeastOne) {
             lastExecutionTime = ScheduledFutureTask.nanoTime();
         }
@@ -834,8 +837,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         execute(ObjectUtil.checkNotNull(task, "task"), false);
     }
 
+    /**
+     * 类似于多线程向queue中添加任务，单线程从queue中拿任务、消费任务。
+     * @param task      task
+     * @param immediate immediate
+     */
     private void execute(Runnable task, boolean immediate) {
         boolean inEventLoop = inEventLoop();
+        //直接放到taskQueue
         addTask(task);
         if (!inEventLoop) {
             //thread为null，或者thread不等于当前线程
