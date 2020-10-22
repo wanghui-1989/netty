@@ -61,12 +61,13 @@ import static io.netty.channel.ChannelHandlerMask.mask;
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannelHandlerContext.class);
-    //双向链表
+    //在管道的入站handler链表中，位于当前handler下一个位置的handler指针
     volatile AbstractChannelHandlerContext next;
+    //在管道的出站handler链表中，位于当前handler下一个位置的handler指针
     volatile AbstractChannelHandlerContext prev;
 
-    private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER =
-            AtomicIntegerFieldUpdater.newUpdater(AbstractChannelHandlerContext.class, "handlerState");
+    private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER = AtomicIntegerFieldUpdater
+            .newUpdater(AbstractChannelHandlerContext.class, "handlerState");
 
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} is about to be called.
@@ -87,14 +88,17 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private static final int INIT = 0;
     //handler关联的pipeline
     private final DefaultChannelPipeline pipeline;
+    //handler名称
     private final String name;
-    //executor是否是串行执行
+    //TODO executor是否是串行执行，或者说是单线程？
     private final boolean ordered;
     //当前handler复写的支持的操作位掩码
     private final int executionMask;
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
     // child executor.
+    //执行事件的executor或者线程。支持不使用IO线程执行事件。
+    //每个handler会在构造的时候，固定死一个执行executor！！！
     final EventExecutor executor;
     private ChannelFuture succeededFuture;
 
@@ -104,8 +108,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     private volatile int handlerState = INIT;
 
-    AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor executor,
-                                  String name, Class<? extends ChannelHandler> handlerClass) {
+    AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor executor, String name, Class<? extends ChannelHandler> handlerClass) {
         this.name = ObjectUtil.checkNotNull(name, "name");
         this.pipeline = pipeline;
         this.executor = executor;
@@ -132,8 +135,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     @Override
     public EventExecutor executor() {
         if (executor == null) {
+            //executor为null，使用IO线程执行handler事件
             return channel().eventLoop();
         } else {
+            //在addLast时传入了独立的执行事件的group，使用group中的一个固定executor执行handler事件
+            //不使用IO线程执行事件
             return executor;
         }
     }
@@ -145,6 +151,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     @Override
     public ChannelHandlerContext fireChannelRegistered() {
+        //找到下一个可以处理ChannelRegistered事件的入站handler
         invokeChannelRegistered(findContextInbound(MASK_CHANNEL_REGISTERED));
         return this;
     }
@@ -154,10 +161,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
             //如果下一个handler的executor和当前handler的executor是同一个，或者说是同一个线程
-            //比如说NioEventLoop单线程处理器，所有handler都是同一个线程处理
+            //因为如果addLast传入了多线程group，那么每个handler的executor可能不相同
+            //如果没传group，使用IO线程的话，就是同一个executor。
             //单线程的同步调用方式，执行事件调用
             next.invokeChannelRegistered();
         } else {
+            //多线程的方式，提交给线程的taskQueue执行
             executor.execute(new Runnable() {
                 @Override
                 public void run() {
@@ -169,6 +178,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     private void invokeChannelRegistered() {
         if (invokeHandler()) {
+            //可以调用handler处理事件
             try {
                 //执行事件回调
                 ((ChannelInboundHandler) handler()).channelRegistered(this);
@@ -176,6 +186,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
                 invokeExceptionCaught(t);
             }
         } else {
+            //当前handler未准备好，不可以调用，
+            // 我们去找下一个可以执行的
             fireChannelRegistered();
         }
     }
@@ -278,6 +290,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     @Override
     public ChannelHandlerContext fireExceptionCaught(final Throwable cause) {
+        //只有入站支持处理异常事件，出站不支持，就算定义了也不会执行。
         invokeExceptionCaught(findContextInbound(MASK_EXCEPTION_CAUGHT), cause);
         return this;
     }
@@ -310,16 +323,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
                 handler().exceptionCaught(this, cause);
             } catch (Throwable error) {
                 if (logger.isDebugEnabled()) {
-                    logger.debug(
-                        "An exception {}" +
-                        "was thrown by a user handler's exceptionCaught() " +
-                        "method while handling the following exception:",
-                        ThrowableUtil.stackTraceToString(error), cause);
+                    logger.debug("An exception {}" + "was thrown by a user handler's exceptionCaught() " + "method while handling the following exception:", ThrowableUtil
+                            .stackTraceToString(error), cause);
                 } else if (logger.isWarnEnabled()) {
-                    logger.warn(
-                        "An exception '{}' [enable DEBUG level for full stacktrace] " +
-                        "was thrown by a user handler's exceptionCaught() " +
-                        "method while handling the following exception:", error, cause);
+                    logger.warn("An exception '{}' [enable DEBUG level for full stacktrace] " + "was thrown by a user handler's exceptionCaught() " + "method while handling the following exception:", error, cause);
                 }
             }
         } else {
@@ -526,8 +533,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     @Override
-    public ChannelFuture connect(
-            final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise promise) {
+    public ChannelFuture connect(final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise promise) {
         ObjectUtil.checkNotNull(remoteAddress, "remoteAddress");
 
         if (isNotValidPromise(promise, false)) {
@@ -789,8 +795,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             throw e;
         }
 
-        final AbstractChannelHandlerContext next = findContextOutbound(flush ?
-                (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
+        final AbstractChannelHandlerContext next = findContextOutbound(flush ? (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
         final Object m = pipeline.touch(msg, next);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
@@ -861,8 +866,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
 
         if (promise.channel() != channel()) {
-            throw new IllegalArgumentException(String.format(
-                    "promise.channel does not match: %s (expected: %s)", promise.channel(), channel()));
+            throw new IllegalArgumentException(String.format("promise.channel does not match: %s (expected: %s)", promise
+                    .channel(), channel()));
         }
 
         if (promise.getClass() == DefaultChannelPromise.class) {
@@ -870,13 +875,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
 
         if (!allowVoidPromise && promise instanceof VoidChannelPromise) {
-            throw new IllegalArgumentException(
-                    StringUtil.simpleClassName(VoidChannelPromise.class) + " not allowed for this operation");
+            throw new IllegalArgumentException(StringUtil.simpleClassName(VoidChannelPromise.class) + " not allowed for this operation");
         }
 
         if (promise instanceof AbstractChannel.CloseFuture) {
-            throw new IllegalArgumentException(
-                    StringUtil.simpleClassName(AbstractChannel.CloseFuture.class) + " not allowed in a pipeline");
+            throw new IllegalArgumentException(StringUtil.simpleClassName(AbstractChannel.CloseFuture.class) + " not allowed in a pipeline");
         }
         return false;
     }
@@ -903,8 +906,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return ctx;
     }
 
-    private static boolean skipContext(
-            AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
+    private static boolean skipContext(AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
         // Ensure we correctly handle MASK_EXCEPTION_CAUGHT which is not included in the MASK_EXCEPTION_CAUGHT
         //如果onlyMask是只有入站handler含有的操作，或者只有出站handler含有的操作
         //这个含义就是当前handler完全没有入站的操作，也没有给定的mask操作，既不是入站handler，也不是给定的mask handler
@@ -913,7 +915,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
                 // everything to preserve ordering.
                 //
                 // See https://github.com/netty/netty/issues/10067
-                //TODO 这块有点不明白？？
+                //下一个handler的executor 和 当前handler的executor是同一个 并且 不支持这个操作
                 (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0);
     }
 
@@ -927,7 +929,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     final boolean setAddComplete() {
-        for (;;) {
+        //将当前handler的状态置为已添加完成，可以服务。
+        for (; ; ) {
             int oldState = handlerState;
             if (oldState == REMOVE_COMPLETE) {
                 return false;
@@ -967,9 +970,18 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     /**
+     * 背景：ChannelHandler#handlerAdded(ChannelHandlerContext)方法的调用时机是：
+     * 在将ChannelHandler添加到实际上下文中并可以处理事件后调用。表明该handler可以提供服务了。
+     *
+     * 当前方法的作用是：尽最大努力检测是否已调用ChannelHandler.handlerAdded（ChannelHandlerContext）。
+     * 如果没调用，则返回false。如果已调用，或者检测不到，则返回true。
+     * 如果此方法返回false，我们将不调用ChannelHandler的事件处理方法，而是将事件向下转发。
+     * 这是必需的，因为DefaultChannelPipeline可能已将ChannelHandler放在链接列表中，
+     * 但未调用ChannelHandler.handlerAdded（ChannelHandlerContext）。
+     *
      * Makes best possible effort to detect if {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} was called
      * yet. If not return {@code false} and if called or could not detect return {@code true}.
-     *
+     * <p>
      * If this method returns {@code false} we will not invoke the {@link ChannelHandler} but just forward the event.
      * This is needed as {@link DefaultChannelPipeline} may already put the {@link ChannelHandler} in the linked-list
      * but not called {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}.
@@ -977,8 +989,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private boolean invokeHandler() {
         // Store in local variable to reduce volatile reads.
         int handlerState = this.handlerState;
-        //要确定这个handler已经添加到了ChannelPipeline的handler链中
-        //TODO 这个要确定，没有调用ChannelHandler.handlerAdded方法()？？
+        //当前handler已经添加到上下文中，可以提供服务 或者 多线程并发executor情况下，已经处于中间状态ADD_PENDING。
         return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
     }
 
@@ -997,8 +1008,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return channel().hasAttr(key);
     }
 
-    private static boolean safeExecute(EventExecutor executor, Runnable runnable,
-            ChannelPromise promise, Object msg, boolean lazy) {
+    private static boolean safeExecute(EventExecutor executor, Runnable runnable, ChannelPromise promise, Object msg, boolean lazy) {
         try {
             if (lazy && executor instanceof AbstractEventExecutor) {
                 ((AbstractEventExecutor) executor).lazyExecute(runnable);
@@ -1036,19 +1046,16 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             }
         });
 
-        static WriteTask newInstance(AbstractChannelHandlerContext ctx,
-                Object msg, ChannelPromise promise, boolean flush) {
+        static WriteTask newInstance(AbstractChannelHandlerContext ctx, Object msg, ChannelPromise promise, boolean flush) {
             WriteTask task = RECYCLER.get();
             init(task, ctx, msg, promise, flush);
             return task;
         }
 
-        private static final boolean ESTIMATE_TASK_SIZE_ON_SUBMIT =
-                SystemPropertyUtil.getBoolean("io.netty.transport.estimateSizeOnSubmit", true);
+        private static final boolean ESTIMATE_TASK_SIZE_ON_SUBMIT = SystemPropertyUtil.getBoolean("io.netty.transport.estimateSizeOnSubmit", true);
 
         // Assuming compressed oops, 12 bytes obj header, 4 ref fields and one int field
-        private static final int WRITE_TASK_OVERHEAD =
-                SystemPropertyUtil.getInt("io.netty.transport.writeTaskSizeOverhead", 32);
+        private static final int WRITE_TASK_OVERHEAD = SystemPropertyUtil.getInt("io.netty.transport.writeTaskSizeOverhead", 32);
 
         private final Handle<WriteTask> handle;
         private AbstractChannelHandlerContext ctx;
@@ -1061,8 +1068,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             this.handle = (Handle<WriteTask>) handle;
         }
 
-        protected static void init(WriteTask task, AbstractChannelHandlerContext ctx,
-                                   Object msg, ChannelPromise promise, boolean flush) {
+        protected static void init(WriteTask task, AbstractChannelHandlerContext ctx, Object msg, ChannelPromise promise, boolean flush) {
             task.ctx = ctx;
             task.msg = msg;
             task.promise = promise;

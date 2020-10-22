@@ -63,9 +63,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private static final AtomicReferenceFieldUpdater<DefaultChannelPipeline, MessageSizeEstimator.Handle> ESTIMATOR =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
-    //入站handler链的头部
+    //当前管道入站handler链的头部，永远保持头指针
     final AbstractChannelHandlerContext head;
-    //出站handler链的尾部
+    //当前管道出站handler链的尾部，永远保持尾指针
     final AbstractChannelHandlerContext tail;
 
     //包装的channel
@@ -79,6 +79,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private boolean firstRegistration = true;
 
     /**
+     * 待处理的handler回调链表头
      * This is the head of a linked list that is processed by {@link #callHandlerAddedForAllHandlers()} and so process
      * all the pending {@link #callHandlerAdded0(AbstractChannelHandlerContext)}.
      *
@@ -102,6 +103,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         tail = new TailContext(this);
         head = new HeadContext(this);
 
+        //首尾相连
         head.next = tail;
         tail.prev = head;
     }
@@ -122,6 +124,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     private AbstractChannelHandlerContext newContext(EventExecutorGroup group, String name, ChannelHandler handler) {
+        //从group中选一个executor来执行handler，不使用IO线程
         return new DefaultChannelHandlerContext(this, childExecutor(group), name, handler);
     }
 
@@ -129,10 +132,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         if (group == null) {
             return null;
         }
+        //配置每个group里只能有一个executor
         Boolean pinEventExecutor = channel.config().getOption(ChannelOption.SINGLE_EVENTEXECUTOR_PER_GROUP);
         if (pinEventExecutor != null && !pinEventExecutor) {
+            //每个group可以有多个executor，即多线程，返回一个executor即可。
             return group.next();
         }
+
+        //未配置，或者为true，即一个group里只能有一个executor
         Map<EventExecutorGroup, EventExecutor> childExecutors = this.childExecutors;
         if (childExecutors == null) {
             // Use size of 4 as most people only use one extra EventExecutor.
@@ -142,7 +149,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         // is used to fire events for the same channel.
         EventExecutor childExecutor = childExecutors.get(group);
         if (childExecutor == null) {
+            //就一个
             childExecutor = group.next();
+            //保存group和这个executor的关系
             childExecutors.put(group, childExecutor);
         }
         return childExecutor;
@@ -164,6 +173,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             checkMultiplicity(handler);
             name = filterName(name, handler);
 
+            //构造上下文
+            //group不为null的话，会从group中选一个executor来执行handler，不使用IO线程
             newCtx = newContext(group, name, handler);
 
             addFirst0(newCtx);
@@ -171,6 +182,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
+            //翻译：如果registered是false，则表示pipeline包装的channel尚未在eventLoop上注册。
+            // 在这种情况下，我们将context添加到pipeline中并添加一个任务，该任务将在channel注册后调用ChannelHandler.handlerAdded（...）。
             if (!registered) {
                 newCtx.setAddPending();
                 callHandlerCallbackLater(newCtx, true);
@@ -183,6 +196,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 return this;
             }
         }
+
+        //channel已注册，并且是当前线程，直接在当前线程中
+        //触发handlerAdded事件，表明可以提供服务了
         callHandlerAdded0(newCtx);
         return this;
     }
@@ -597,6 +613,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         oldCtx.next = newCtx;
     }
 
+    //Multiplicity：多重性
+    //检查是否被添加了多次，非可共享的handler(@Sharable)只能被添加到pipeline一次
     private static void checkMultiplicity(ChannelHandler handler) {
         if (handler instanceof ChannelHandlerAdapter) {
             ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
@@ -1247,6 +1265,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     // A special catch-all handler that handles both bytes and messages.
+    //只实现了入站ChannelInboundHandler
     final class TailContext extends AbstractChannelHandlerContext implements ChannelInboundHandler {
 
         TailContext(DefaultChannelPipeline pipeline) {
@@ -1307,6 +1326,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    //实现了入站和出站handler
     final class HeadContext extends AbstractChannelHandlerContext
             implements ChannelOutboundHandler, ChannelInboundHandler {
 

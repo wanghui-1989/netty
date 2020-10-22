@@ -67,6 +67,7 @@ public interface ChannelInboundHandler extends ChannelHandler {
     void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception;
 
     /**
+     * 只有入站支持处理异常事件，出站不支持，就算定义了也不会执行。
      * Gets called if a {@link Throwable} was thrown.
      */
     @Override

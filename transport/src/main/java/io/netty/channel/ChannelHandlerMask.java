@@ -106,7 +106,8 @@ final class ChannelHandlerMask {
                 //位运算 默认包含所有操作，然后再一个个剔除不支持的操作位
                 mask |= MASK_ALL_INBOUND;
 
-                //没有这个方法，或者有这个方法，但是被@Skip注解注释，就表示需要跳过这个方法。
+                //不存在这个方法的话，不能跳过这个方法。
+                //有这个方法，但是被@Skip注解注释，表示要跳过这个方法。
                 if (isSkippable(handlerType, "channelRegistered", ChannelHandlerContext.class)) {
                     mask &= ~MASK_CHANNEL_REGISTERED;
                 }

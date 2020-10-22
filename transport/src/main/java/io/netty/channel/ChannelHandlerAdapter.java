@@ -27,6 +27,9 @@ import java.util.Map;
 public abstract class ChannelHandlerAdapter implements ChannelHandler {
 
     // Not using volatile because it's used only for a sanity check.
+    //当该handler被添加到上下文中，可以提供服务时，置为true，表示已添加。
+    //如果后来又被添加到其他的pipeline，会检查handler有没有@Sharable注解，如果没有，表明不是可共享的，
+    //证明只能被添加一次，不可以被添加多次。
     boolean added;
 
     /**
