@@ -37,6 +37,7 @@ public interface ChannelInboundHandler extends ChannelHandler {
     void channelActive(ChannelHandlerContext ctx) throws Exception;
 
     /**
+     * 现在已注册ChannelHandlerContext的Channel处于非活动状态，并且已达到生命周期的尽头。
      * The {@link Channel} of the {@link ChannelHandlerContext} was registered is now inactive and reached its
      * end of lifetime.
      */
