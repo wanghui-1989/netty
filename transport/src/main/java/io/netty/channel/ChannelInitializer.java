@@ -48,6 +48,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * </pre>
  * Be aware that this class is marked as {@link Sharable} and so the implementation must be safe to be re-used.
  *
+ * 感觉作用就是在channel注册到EventLoop(selector)后，触发channelRegistered时间，
+ * 执行initChannel方法，初始化pipeline，包括添加handler等
+ * 通常该类的实现只是起到初始化的作用，不响应InboundHandler的其他事件
  * @param <C>   A sub-type of {@link Channel}
  */
 @Sharable
@@ -100,15 +103,20 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     }
 
     /**
+     * 一般会在pipeline.addLast(handler)方法中的最后触发handlerAdded方法
      * {@inheritDoc} If override this method ensure you call super!
      */
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+        //如果已经注册到selector，
+        //使用ServerBootstrap构建时，此时还没有调用注册方法。
         if (ctx.channel().isRegistered()) {
             // This should always be true with our current DefaultChannelPipeline implementation.
             // The good thing about calling initChannel(...) in handlerAdded(...) is that there will be no ordering
             // surprises if a ChannelInitializer will add another ChannelInitializer. This is as all handlers
             // will be added in the expected order.
+            //已注册到selector
+            //初始化channel
             if (initChannel(ctx)) {
 
                 // We are done with init the Channel, removing the initializer now.

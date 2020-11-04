@@ -869,7 +869,6 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
         }
 
-        //TODO 应该是bug
         if (!addTaskWakesUp && immediate) {
             wakeup(inEventLoop);
         }

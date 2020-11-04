@@ -44,15 +44,20 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannel.class);
 
+    //如io.netty.channel.socket.nio.NioServerSocketChannel
+    //NioServerSocketChannel中的方法，封装了javachannel.accept()返回SocketChannel
+    //parent就类似于创建SocketChannel的channel
     private final Channel parent;
     private final ChannelId id;
     private final Unsafe unsafe;
+    //创建channel的时候，一定会创建一个新的pipeline，见构造函数
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
     private final CloseFuture closeFuture = new CloseFuture(this);
 
     private volatile SocketAddress localAddress;
     private volatile SocketAddress remoteAddress;
+    //当前channel注册的eventloop
     private volatile EventLoop eventLoop;
     private volatile boolean registered;
     private boolean closeInitiated;
@@ -72,6 +77,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         this.parent = parent;
         id = newId();
         unsafe = newUnsafe();
+        //创建channel的时候，一定会创建一个新的pipeline
         pipeline = newChannelPipeline();
     }
 
@@ -453,6 +459,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
             if (isRegistered()) {
+                //如果已注册过
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
@@ -493,6 +500,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+                //channel向selector注册
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -501,12 +509,20 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // user may already fire events through the pipeline in the ChannelFutureListener.
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                //尝试set为success
                 safeSetSuccess(promise);
+                //发布channel已注册事件
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+                //server端和client端的存活判断条件不一样
+                //server端 return isOpen() && javaChannel().socket().isBound();
+                //.isBound()只有在server端socket成功的绑定到一个服务地址后，才会返回true，否则为false。
+                //client端 return ch.isOpen() && ch.isConnected();
+                //client端的channel有多种状态值，isConnected表示它的状态值==已连接。
                 if (isActive()) {
                     if (firstRegistration) {
+                        //第一次注册，发布活跃事件
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
@@ -547,6 +563,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             boolean wasActive = isActive();
             try {
+                //如果是server端，调用ServerSocketChannel.socket().bind(...)
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -555,9 +572,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             if (!wasActive && isActive()) {
+                //如果曾经是未激活的，并且，现在是已激活的
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
+                        //发布激活事件
                         pipeline.fireChannelActive();
                     }
                 });

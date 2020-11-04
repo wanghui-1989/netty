@@ -221,9 +221,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         final AbstractChannelHandlerContext newCtx;
         synchronized (this) {
             checkMultiplicity(handler);
-
+            //创建handler上下文
             newCtx = newContext(group, filterName(name, handler), handler);
-
+            //加到链末尾
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
@@ -241,6 +241,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 return this;
             }
         }
+        //调用handler.handlerAdded(ctx)
         callHandlerAdded0(newCtx);
         return this;
     }
@@ -1120,6 +1121,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private void callHandlerAddedForAllHandlers() {
         final PendingHandlerCallback pendingHandlerCallbackHead;
         synchronized (this) {
+            //已经是已经注册到selector后，才会调用handlerAdded
             assert !registered;
 
             // This Channel itself was registered.
@@ -1135,6 +1137,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         // the EventLoop.
         PendingHandlerCallback task = pendingHandlerCallbackHead;
         while (task != null) {
+            //迭代执行回调，调用handler.handlerRemoved或者handlerAdded
             task.execute();
             task = task.next;
         }

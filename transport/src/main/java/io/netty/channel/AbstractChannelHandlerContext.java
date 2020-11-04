@@ -898,7 +898,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private AbstractChannelHandlerContext findContextOutbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         EventExecutor currentExecutor = executor();
-        //从当前出站handler开始，沿着出站handler链，往上找，找到第一个能处理mask掩码指定操作的handler
+        //从当前出站handler开始，不包括当前handler，沿着出站handler链，往上找，找到第一个能处理mask掩码指定操作的handler
         //比如mask是bind事件，就找到下一个可以处理bind事件的handler
         do {
             ctx = ctx.prev;

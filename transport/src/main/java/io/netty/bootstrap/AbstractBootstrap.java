@@ -269,6 +269,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        //初始化channel 并注册到EventLoop(selector)
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
@@ -276,8 +277,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
 
         if (regFuture.isDone()) {
+            //上面排除过异常、取消等情况了，这里只有注册success一种情况
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
+            //此时才开始绑定地址
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
@@ -307,7 +310,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            //io.netty.channel.socket.nio.NioServerSocketChannel
+            //io.netty.channel.socket.nio.NioSocketChannel 等等
             channel = channelFactory.newChannel();
+            //初始化channel，包括向pipeline添加handler
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -320,6 +326,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        //channel是serverSocketChannel或者socketChannel
+        //向主Reactor(server端是bossNioEventLoopGroup，client端是NioEventLoopGroup)注册channel
+        //即向selector注册channel
+        //这里可以看出来，如果入参传入bossGroup和workerGroup的话，只会向bossGroup注册
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

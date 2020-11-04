@@ -50,7 +50,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
+    //见父类的parent注释
+    //这个就是javachannel.accept()返回的SocketChannel
     private final SelectableChannel ch;
+    //NioServerSocketChannel关注SelectionKey.OP_ACCEPT事件
+    //NioSocketChannel关注SelectionKey.OP_READ事件
     protected final int readInterestOp;
     volatile SelectionKey selectionKey;
     boolean readPending;
@@ -377,6 +381,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                //0表示对这个channel的任何事件都不感兴趣，这样会导致永远select不到这个channel。
+                //附件参数传的是this，表示是NioServerSocketChannel或者NioSocketChannel
+                //所以事件处理逻辑中，拿出来的就是发生了事件的netty包装的channel
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
@@ -409,8 +416,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         readPending = true;
 
+        //触发的事件
         final int interestOps = selectionKey.interestOps();
+        //readInterestOp是关注的事件
         if ((interestOps & readInterestOp) == 0) {
+            //没有发生关注的事件，就变更兴趣集
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }
